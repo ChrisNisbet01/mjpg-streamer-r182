@@ -2,3 +2,5 @@
 *.vpw
 *.vpwhistu
 *.vtg
+*.o
+/mjpg_streamer
