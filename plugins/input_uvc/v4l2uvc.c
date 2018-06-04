@@ -69,7 +69,7 @@ int init_videoIn(struct vdIn *vd, char *device, int width,
     vd->videodevice = (char *) calloc(1, 16 * sizeof(char));
     vd->status = (char *) calloc(1, 100 * sizeof(char));
     vd->pictName = (char *) calloc(1, 80 * sizeof(char));
-    snprintf(vd->videodevice, 12, "%s", device);
+    snprintf(vd->videodevice, 16, "%s", device);
     vd->toggleAvi = 0;
     vd->getPict = 0;
     vd->signalquit = 1;
@@ -130,7 +130,7 @@ int init_videoIn(struct vdIn *vd, char *device, int width,
             return -1;
         }
 
-        memcpy(&pglobal->in[id].in_formats[pglobal->in[id].formatCount], &fmtdesc, sizeof(input_format));
+        memcpy(&pglobal->in[id].in_formats[pglobal->in[id].formatCount], &fmtdesc, sizeof(struct v4l2_fmtdesc));
 
         if(fmtdesc.pixelformat == format)
             pglobal->in[id].currentFormat = pglobal->in[id].formatCount;
@@ -217,6 +217,9 @@ static int init_v4l2(struct vdIn *vd)
 {
     int i;
     int ret = 0;
+    struct v4l2_buffer buf;
+
+
     if((vd->fd = OPEN_VIDEO(vd->videodevice, O_RDWR)) == -1) {
         perror("ERROR opening V4L interface");
         DBG("errno: %d", errno);
@@ -335,11 +338,15 @@ static int init_v4l2(struct vdIn *vd)
                         vd->frame_period_time = 1000/vd->fps; // calcualate frame period time in ms
                         IPRINT("Frame period time ......: %ld ms\n", vd->frame_period_time);
 
-                        // set FPS to maximum in order to minimize the lagging
                         memset(setfps, 0, sizeof(struct v4l2_streamparm));
                         setfps->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
                         setfps->parm.capture.timeperframe.numerator = 1;
-                        setfps->parm.capture.timeperframe.denominator = 255;
+                       if (vd->formatIn == V4L2_PIX_FMT_MJPEG)
+                           // set FPS to maximum in order to minimize the lagging
+                           setfps->parm.capture.timeperframe.denominator = 255;
+                       else
+                           setfps->parm.capture.timeperframe.denominator = vd->fps;
+
                         ret = xioctl(vd->fd, VIDIOC_S_PARM, setfps);
                         if (ret) {
                             perror("Unable to set the FPS\n");
@@ -375,26 +382,27 @@ static int init_v4l2(struct vdIn *vd)
      * map the buffers
      */
     for(i = 0; i < NB_BUFFER; i++) {
-        memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
-        vd->buf.index = i;
-        vd->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        vd->buf.memory = V4L2_MEMORY_MMAP;
-        ret = xioctl(vd->fd, VIDIOC_QUERYBUF, &vd->buf);
+        memset(&buf, 0, sizeof(struct v4l2_buffer));
+        buf.index = i;
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        ret = xioctl(vd->fd, VIDIOC_QUERYBUF, &buf);
         if(ret < 0) {
             perror("Unable to query buffer");
             goto fatal;
         }
 
         if(debug)
-            fprintf(stderr, "length: %u offset: %u\n", vd->buf.length, vd->buf.m.offset);
+            fprintf(stderr, "length: %u offset: %u\n", buf.length, buf.m.offset);
 
         vd->mem[i] = mmap(0 /* start anywhere */ ,
-                          vd->buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, vd->fd,
-                          vd->buf.m.offset);
+                          buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, vd->fd,
+                          buf.m.offset);
         if(vd->mem[i] == MAP_FAILED) {
             perror("Unable to map buffer");
             goto fatal;
         }
+	vd->memlength[i] = buf.length;
         if(debug)
             fprintf(stderr, "Buffer mapped at address %p.\n", vd->mem[i]);
     }
@@ -403,11 +411,11 @@ static int init_v4l2(struct vdIn *vd)
      * Queue the buffers.
      */
     for(i = 0; i < NB_BUFFER; ++i) {
-        memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
-        vd->buf.index = i;
-        vd->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        vd->buf.memory = V4L2_MEMORY_MMAP;
-        ret = xioctl(vd->fd, VIDIOC_QBUF, &vd->buf);
+        memset(&buf, 0, sizeof(struct v4l2_buffer));
+        buf.index = i;
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        ret = xioctl(vd->fd, VIDIOC_QBUF, &buf);
         if(ret < 0) {
             perror("Unable to queue buffer");
             goto fatal;;
@@ -499,17 +507,18 @@ int memcpy_picture(unsigned char *out, unsigned char *buf, int size)
 int uvcGrab(struct vdIn *vd)
 {
 #define HEADERFRAME1 0xaf
+    struct v4l2_buffer buf;
     int ret;
 
     if(vd->streamingState == STREAMING_OFF) {
         if(video_enable(vd))
             goto err;
     }
-    memset(&vd->buf, 0, sizeof(struct v4l2_buffer));
-    vd->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    vd->buf.memory = V4L2_MEMORY_MMAP;
+    memset(&buf, 0, sizeof(struct v4l2_buffer));
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
 
-    ret = xioctl(vd->fd, VIDIOC_DQBUF, &vd->buf);
+    ret = xioctl(vd->fd, VIDIOC_DQBUF, &buf);
     if(ret < 0) {
         perror("Unable to dequeue buffer");
         goto err;
@@ -517,32 +526,34 @@ int uvcGrab(struct vdIn *vd)
 
     switch(vd->formatIn) {
     case V4L2_PIX_FMT_MJPEG:
-        if(vd->buf.bytesused <= HEADERFRAME1) {
+        if(buf.bytesused <= HEADERFRAME1) {
             /* Prevent crash
                                                         * on empty image */
             fprintf(stderr, "Ignoring empty buffer ...\n");
             return 0;
         }
 
-        /* memcpy(vd->tmpbuffer, vd->mem[vd->buf.index], vd->buf.bytesused);
+        /* memcpy(vd->tmpbuffer, vd->mem[buf.index], buf.bytesused);
 
-        memcpy (vd->tmpbuffer, vd->mem[vd->buf.index], HEADERFRAME1);
+        memcpy (vd->tmpbuffer, vd->mem[buf.index], HEADERFRAME1);
         memcpy (vd->tmpbuffer + HEADERFRAME1, dht_data, sizeof(dht_data));
-        memcpy (vd->tmpbuffer + HEADERFRAME1 + sizeof(dht_data), vd->mem[vd->buf.index] + HEADERFRAME1, (vd->buf.bytesused - HEADERFRAME1));
+        memcpy (vd->tmpbuffer + HEADERFRAME1 + sizeof(dht_data), vd->mem[buf.index] + HEADERFRAME1, (buf.bytesused - HEADERFRAME1));
         */
 
-        memcpy(vd->tmpbuffer, vd->mem[vd->buf.index], vd->buf.bytesused);
+        memcpy(vd->tmpbuffer, vd->mem[buf.index], buf.bytesused);
+	vd->tmpbytesused = buf.bytesused;
+	vd->tmptimestamp = buf.timestamp;
 
         if(debug)
-            fprintf(stderr, "bytes in used %d \n", vd->buf.bytesused);
+            fprintf(stderr, "bytes in used %d \n", buf.bytesused);
         break;
     case V4L2_PIX_FMT_RGB565:
     case V4L2_PIX_FMT_YUYV:
     case V4L2_PIX_FMT_RGB24:
-        if(vd->buf.bytesused > vd->framesizeIn)
-            memcpy(vd->framebuffer, vd->mem[vd->buf.index], (size_t) vd->framesizeIn);
+        if(buf.bytesused > vd->framesizeIn)
+            memcpy(vd->framebuffer, vd->mem[buf.index], (size_t) vd->framesizeIn);
         else
-            memcpy(vd->framebuffer, vd->mem[vd->buf.index], (size_t) vd->buf.bytesused);
+            memcpy(vd->framebuffer, vd->mem[buf.index], (size_t) buf.bytesused);
         break;
 
     default:
@@ -550,7 +561,7 @@ int uvcGrab(struct vdIn *vd)
         break;
     }
 
-    ret = xioctl(vd->fd, VIDIOC_QBUF, &vd->buf);
+    ret = xioctl(vd->fd, VIDIOC_QBUF, &buf);
     if(ret < 0) {
         perror("Unable to requeue buffer");
         goto err;
@@ -570,6 +581,7 @@ int close_v4l2(struct vdIn *vd)
     if(vd->tmpbuffer)
         free(vd->tmpbuffer);
     vd->tmpbuffer = NULL;
+    vd->tmpbytesused = 0;
     free(vd->framebuffer);
     vd->framebuffer = NULL;
     free(vd->videodevice);
@@ -941,7 +953,7 @@ int setResolution(struct vdIn *vd, int width, int height)
         DBG("Unmap buffers\n");
         int i;
         for(i = 0; i < NB_BUFFER; i++)
-            munmap(vd->mem[i], vd->buf.length);
+            munmap(vd->mem[i], vd->memlength[i]);
 
         if(CLOSE_VIDEO(vd->fd) == 0) {
             DBG("Device closed successfully\n");

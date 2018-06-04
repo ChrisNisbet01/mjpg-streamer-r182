@@ -316,6 +316,10 @@ int input_init(input_parameter *param, int id)
     }
     memset(cams[id].videoIn, 0, sizeof(struct vdIn));
 
+    /* Non-MJPEG formats seem to fail with unlimited FPS */
+    if (format != V4L2_PIX_FMT_MJPEG && fps == -1)
+        fps = 15;
+
     /* display the parsed values */
     IPRINT("Using V4L2 device.: %s\n", dev);
     IPRINT("Desired Resolution: %i x %i\n", width, height);
@@ -487,7 +491,7 @@ void *cam_thread(void *arg)
             exit(EXIT_FAILURE);
         }
 
-        //DBG("received frame of size: %d from plugin: %d\n", pcontext->videoIn->buf.bytesused, pcontext->id);
+        //DBG("received frame of size: %d from plugin: %d\n", pcontext->videoIn->tmpbytesused, pcontext->id);
 
         /*
          * Workaround for broken, corrupted frames:
@@ -496,7 +500,7 @@ void *cam_thread(void *arg)
          * For example a VGA (640x480) webcam picture is normally >= 8kByte large,
          * corrupted frames are smaller.
          */
-        if(pcontext->videoIn->buf.bytesused < minimum_size) {
+        if(pcontext->videoIn->tmpbytesused < minimum_size) {
             DBG("dropping too small frame, assuming it as broken\n");
             continue;
         }
@@ -508,15 +512,15 @@ void *cam_thread(void *arg)
             struct timeval timestamp;
 
             gettimeofday(&timestamp, NULL);
-            pcontext->videoIn->buf.timestamp = timestamp;
+            pcontext->videoIn->tmptimestamp = timestamp;
         }
 
         // use software frame dropping on low fps
         if (pcontext->videoIn->soft_framedrop == 1) {
             unsigned long last = pglobal->in[pcontext->id].timestamp.tv_sec * 1000 +
                                 (pglobal->in[pcontext->id].timestamp.tv_usec/1000); // convert to ms
-            unsigned long current = pcontext->videoIn->buf.timestamp.tv_sec * 1000 +
-                                    pcontext->videoIn->buf.timestamp.tv_usec/1000; // convert to ms
+            unsigned long current = pcontext->videoIn->tmptimestamp.tv_sec * 1000 +
+                                    pcontext->videoIn->tmptimestamp.tv_usec/1000; // convert to ms
 
             // if the requested time did not esplashed skip the frame
             if ((current - last) < pcontext->videoIn->frame_period_time) {
@@ -544,7 +548,7 @@ void *cam_thread(void *arg)
         } else {
         #endif
             //DBG("copying frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->buf.bytesused);
+            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);
         #ifndef NO_LIBJPEG
         }
         #endif
@@ -558,7 +562,7 @@ void *cam_thread(void *arg)
 #endif
 
         /* copy this frame's timestamp to user space */
-        pglobal->in[pcontext->id].timestamp = pcontext->videoIn->buf.timestamp;
+        pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
 
         /* signal fresh_frame */
         pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);
