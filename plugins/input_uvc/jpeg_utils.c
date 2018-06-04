@@ -102,7 +102,7 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
                 }
             }
 
-            row_pointer[0] = (JSAMPROW*)line_buffer;
+            row_pointer[0] = (JSAMPROW)line_buffer;
             jpeg_write_scanlines(&cinfo, row_pointer, 1);
         }
     } else if (vd->formatIn == V4L2_PIX_FMT_RGB565) {
@@ -124,7 +124,7 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
                 yuyv += 2;
             }
 
-            row_pointer[0] = (JSAMPROW*)line_buffer;
+            row_pointer[0] = (JSAMPROW)line_buffer;
             jpeg_write_scanlines(&cinfo, row_pointer, 1);
         }
     } else if (vd->formatIn == V4L2_PIX_FMT_RGB24) {
