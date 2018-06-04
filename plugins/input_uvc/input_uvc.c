@@ -88,6 +88,7 @@ static globals *pglobal;
 static int gquality = 80;
 static unsigned int minimum_size = 0;
 static int dynctrls = 1;
+static int wantTimestamp = 0; 
 
 void *cam_thread(void *);
 void cam_cleanup(void *);
@@ -163,7 +164,8 @@ int input_init(input_parameter *param, int id)
             {"fourcc", required_argument, 0, 0},
             {"t", required_argument, 0, 0 },
 	        {"tvnorm", required_argument, 0, 0 },
-            {0, 0, 0, 0}
+            {"timestamp", no_argument, 0, 0 },
+            { 0, 0, 0, 0 }
         };
 
         /* parsing all parameters according to the list above is sufficent */
@@ -292,6 +294,9 @@ int input_init(input_parameter *param, int id)
             } else if ( strcasecmp("secam",optarg) == 0 ) {
 	             tvnorm = V4L2_STD_SECAM;
             }
+            break;
+        case 21:
+            wantTimestamp = 1;
             break;
         default:
             DBG("default case\n");
@@ -494,6 +499,16 @@ void *cam_thread(void *arg)
         if(pcontext->videoIn->buf.bytesused < minimum_size) {
             DBG("dropping too small frame, assuming it as broken\n");
             continue;
+        }
+
+        // Overwrite timestamp (e.g. where camera is providing 0 values)
+        // Do it here so that this timestamp can be used in frameskipping
+        if (wantTimestamp)
+        {
+            struct timeval timestamp;
+
+            gettimeofday(&timestamp, NULL);
+            pcontext->videoIn->buf.timestamp = timestamp;
         }
 
         // use software frame dropping on low fps
