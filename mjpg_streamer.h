@@ -22,7 +22,7 @@
 
 #ifndef MJPG_STREAMER_H
 #define MJPG_STREAMER_H
-#define SOURCE_VERSION "2.0"
+#define SOURCE_VERSION "2.1"
 
 /* FIXME take a look to the output_http clients thread marked with fixme if you want to set more then 10 plugins */
 #define MAX_INPUT_PLUGINS 10

@@ -451,7 +451,7 @@ void help(void)
     "                          it up to the driver using the value \"auto\"\n" \
     " ---------------------------------------------------------------\n\n"
     " [-t | --tvnorm ] ......: set TV-Norm pal, ntsc or secam\n"
-    " ---------------------------------------------------------------\n\n");
+    " ---------------------------------------------------------------\n\n"
 #else
     fprintf(stderr, " [-f | --fps ]..........: frames per second\n" \
     "                          (activates YUYV format, disables MJPEG)\n" \
@@ -462,8 +462,10 @@ void help(void)
     " [-l | --led ]..........: switch the LED \"on\", \"off\", let it \"blink\" or leave\n" \
     "                          it up to the driver using the value \"auto\"\n" \
     " [-t | --tvnorm ] ......: set TV-Norm pal, ntsc or secam\n"
-    " ---------------------------------------------------------------\n\n");
+    " ---------------------------------------------------------------\n\n"
 #endif
+    " [--timestamp]    ......: Populate frame timestamp with system time\n"
+    );
 }
 
 /******************************************************************************
