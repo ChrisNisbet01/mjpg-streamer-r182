@@ -49,12 +49,14 @@
 
 static pthread_t worker;
 static globals *pglobal;
-static int fd, delay, ringbuffer_size = -1, ringbuffer_exceed = 0, max_frame_size;
+static int fd = -1, delay, ringbuffer_size = -1, ringbuffer_exceed = 0, max_frame_size;
 static char *folder = "/tmp";
 static unsigned char *frame = NULL;
 static char *command = NULL;
 static int input_number = 0;
 static char *mjpgFileName = NULL;
+time_t reopen_time;
+static unsigned int mjpg_time; /* TODO: File size for each mjpg file segment. */
 
 /******************************************************************************
 Description.: print a help message
@@ -87,10 +89,6 @@ void worker_cleanup(void *arg)
 {
     static unsigned char first_run = 1;
 
-    if (mjpgFileName != NULL) {
-        close(fd);
-    }
-
     if(!first_run) {
         DBG("already cleaned up ressources\n");
         return;
@@ -99,10 +97,16 @@ void worker_cleanup(void *arg)
     first_run = 0;
     OPRINT("cleaning up ressources allocated by worker thread\n");
 
+    if (fd >= 0)
+    {
+        close(fd);
+        fd = -1;
+    }
+
+
     if(frame != NULL) {
         free(frame);
     }
-    close(fd);
 }
 
 /******************************************************************************
@@ -207,8 +211,6 @@ void *worker_thread(void *arg)
     int ok = 1, frame_size = 0, rc = 0;
     char buffer1[1024] = {0}, buffer2[1024] = {0};
     unsigned long long counter = 0;
-    time_t t;
-    struct tm *now;
     unsigned char *tmp_framebuffer = NULL;
 
     /* set cleanup handler to cleanup allocated ressources */
@@ -244,9 +246,10 @@ void *worker_thread(void *arg)
         pthread_mutex_unlock(&pglobal->in[input_number].db);
 
         if (mjpgFileName == NULL) { // single files with ringbuffer mode
+            time_t t;
+            struct tm * now;
+
             /* prepare filename */
-            memset(buffer1, 0, sizeof(buffer1));
-            memset(buffer2, 0, sizeof(buffer2));
 
             /* get current time */
             t = time(NULL);
@@ -257,14 +260,14 @@ void *worker_thread(void *arg)
             }
 
             /* prepare string, add time and date values */
-            if(strftime(buffer1, sizeof(buffer1), "%%s/%Y_%m_%d_%H_%M_%S_picture_%%09llu.jpg", now) == 0) {
+            if(strftime(buffer1, sizeof buffer1, "%Y_%m_%d_%H_%M_%S", now) == 0) {
                 OPRINT("strftime returned 0\n");
                 free(frame); frame = NULL;
                 return NULL;
             }
 
             /* finish filename by adding the foldername and a counter value */
-            snprintf(buffer2, sizeof(buffer2), buffer1, folder, counter);
+            snprintf(buffer2, sizeof buffer2, "%s/%s_picture_%09llu.jpg", folder, buffer1, counter);
 
             counter++;
 
@@ -281,15 +284,15 @@ void *worker_thread(void *arg)
                 OPRINT("could not write to file %s\n", buffer2);
                 perror("write()");
                 close(fd);
+                fd = -1;
                 return NULL;
             }
 
             close(fd);
+            fd = -1;
 
             /* call the command if user specified one, pass current filename as argument */
             if(command != NULL) {
-                memset(buffer1, 0, sizeof(buffer1));
-
                 /* buffer2 still contains the filename, pass it to the command as parameter */
                 snprintf(buffer1, sizeof(buffer1), "%s \"%s\"", command, buffer2);
                 DBG("calling command %s", buffer1);
@@ -323,8 +326,41 @@ void *worker_thread(void *arg)
                 OPRINT("could not write to file %s\n", buffer2);
                 perror("write()");
                 close(fd);
+                fd = -1;
                 return NULL;
             }
+
+            time_t t = time(NULL);
+            if (difftime(t, reopen_time) >= 0)
+            {
+                struct tm now = *localtime(&t);
+                struct tm reopen_tm = now;
+
+                reopen_tm.tm_sec += 15;
+                reopen_time = mktime(&reopen_tm);      // normalize it
+
+                /* prepare string, add time and date values */
+                if (strftime(buffer1, sizeof(buffer1), "%Y_%m_%d_%H_%M_%S", &now) == 0)
+                {
+                    OPRINT("strftime returned 0\n");
+                    close(fd);
+                    fd = -1;
+                    return NULL;
+                }
+
+                /* finish filename by adding the foldername and a counter value */
+                snprintf(buffer2, sizeof buffer2, "%s/%s_movie.mpg", folder, buffer1);
+
+                OPRINT("output file.......: %s\n", buffer2);
+                close(fd);
+                if ((fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
+                {
+                    OPRINT("could not open the file %s\n", buffer2);
+                    return NULL;
+                }
+            }
+
+
         }
 
         /* if specified, wait now */
@@ -464,16 +500,35 @@ int output_init(output_parameter *param, int id)
             OPRINT("ringbuffer size...: %s\n", "no ringbuffer");
         }
     } else {
-        char *fnBuffer = malloc(strlen(mjpgFileName) + strlen(folder) + 3);
-        sprintf(fnBuffer, "%s/%s", folder, mjpgFileName);
+        char buffer1[1024];
+        char buffer2[1024];
+        time_t t;
 
-        OPRINT("output file.......: %s\n", fnBuffer);
-        if((fd = open(fnBuffer, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0) {
-            OPRINT("could not open the file %s\n", fnBuffer);
-            free(fnBuffer);
+        /* get current time */
+        t = time(NULL);
+        struct tm now = *localtime(&t);
+        struct tm reopen_tm = now;
+
+        reopen_tm.tm_sec += 15;
+        reopen_time = mktime(&reopen_tm);      // normalize it
+
+
+        /* prepare string, add time and date values */
+        if (strftime(buffer1, sizeof(buffer1), "%Y_%m_%d_%H_%M_%S", &now) == 0)
+        {
+            OPRINT("strftime returned 0\n");
             return 1;
         }
-        free(fnBuffer);
+
+        /* finish filename by adding the foldername and a counter value */
+        snprintf(buffer2, sizeof buffer2, "%s/%s_movie.mpg", folder, buffer1); 
+
+        OPRINT("output file.......: %s\n", buffer2);
+        if ((fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
+        {
+            OPRINT("could not open the file %s\n", buffer2);
+            return 1;
+        }
     }
 
     param->global->out[id].parametercount = 2;

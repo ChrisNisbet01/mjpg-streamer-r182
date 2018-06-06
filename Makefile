@@ -19,7 +19,7 @@ CC = gcc
 #CFLAGS += $(SVNDEV)
 
 # general compile flags, enable all warnings to make compile more verbose
-CFLAGS += -DLINUX -D_GNU_SOURCE -Wall 
+CFLAGS += -DLINUX -D_GNU_SOURCE -Wall
 CFLAGS += -g -Wuninitialized
 #CFLAGS +=  -DDEBUG
 
@@ -32,8 +32,8 @@ LFLAGS += -lpthread -ldl
 APP_BINARY = mjpg_streamer
 
 # define the names and targets of the plugins
-PLUGINS = input_uvc.so
-PLUGINS += output_file.so
+PLUGINS = output_file.so
+PLUGINS += input_uvc.so
 #PLUGINS += output_udp.so
 PLUGINS += output_http.so
 PLUGINS += input_testpicture.so
@@ -44,7 +44,7 @@ PLUGINS += input_file.so
 # PLUGINS += output_mars2020.so
 # PLUGINS += output_rtsp.so
 # PLUGINS += input_ptp2.so # commented out because it depends on libgphoto
-#PLUGINS += input_http.so 
+#PLUGINS += input_http.so
 # PLUGINS += output_viewer.so # commented out because it depends on SDL
 
 # define the names of object files
@@ -99,7 +99,7 @@ endif
 output_udp.so: mjpg_streamer.h utils.h
 	make -C plugins/output_udp all
 	cp plugins/output_udp/output_udp.so .
-	
+
 output_mars2020.so: mjpg_streamer.h utils.h
 	make -C plugins/output_mars2020 all
 	cp plugins/output_mars2020/output_mars2020.so .
@@ -111,18 +111,18 @@ input_file.so: mjpg_streamer.h utils.h
 output_rtsp.so: mjpg_streamer.h utils.h
 	make -C plugins/output_rtsp all
 	cp plugins/output_rtsp/output_rtsp.so .
-	
+
 input_ptp2.so: mjpg_streamer.h utils.h
 	make -C plugins/input_ptp2 all
-	cp plugins/input_ptp2/input_ptp2.so .	
-	
+	cp plugins/input_ptp2/input_ptp2.so .
+
 input_megatec.so: mjpg_streamer.h utils.h
 	make -C plugins/input_megatec all
-	cp plugins/input_megatec/input_megatec.so .	
-	
+	cp plugins/input_megatec/input_megatec.so .
+
 input_pylon.so: mjpg_streamer.h utils.h
 	make -C plugins/input_pylon all
-	cp plugins/input_megatec/input_pylon.so .	
+	cp plugins/input_megatec/input_pylon.so .
 
 input_http.so: mjpg_streamer.h utils.h
 	make -C plugins/input_http all
