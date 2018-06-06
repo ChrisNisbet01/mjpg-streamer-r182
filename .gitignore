@@ -4,3 +4,4 @@
 *.vtg
 *.o
 /mjpg_streamer
+*.so
