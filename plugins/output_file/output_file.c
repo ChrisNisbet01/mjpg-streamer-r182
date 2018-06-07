@@ -36,6 +36,7 @@
 #include <time.h>
 #include <syslog.h>
 #include <dirent.h>
+#include <stdbool.h>
 
 #include <linux/types.h>          /* for videodev2.h */
 #include <linux/videodev2.h>
@@ -51,12 +52,16 @@ static pthread_t worker;
 static globals *pglobal;
 static int fd = -1, delay, ringbuffer_size = -1, ringbuffer_exceed = 0, max_frame_size;
 static char *folder = "/tmp";
-static unsigned char *frame = NULL;
+static unsigned char * frame = NULL;
 static char *command = NULL;
 static int input_number = 0;
 static char *mjpgFileName = NULL;
-time_t reopen_time;
-static unsigned int mjpg_time; /* TODO: File size for each mjpg file segment. */
+time_t reopen_time; /* The time when the current mjpeg file should be closed and another opened. */
+size_t segment_length_seconds = 0;
+
+static char buffer1[1024];
+static char buffer2[1024]; 
+
 
 /******************************************************************************
 Description.: print a help message
@@ -71,6 +76,7 @@ void help(void)
             " The following parameters can be passed to this plugin:\n\n" \
             " [-f | --folder ]........: folder to save pictures\n" \
             " [-m | --mjpeg ].........: save the frames to an mjpg file \n" \
+            " [-t | --time ].........: mjpeg file length \n" \
             " [-d | --delay ].........: delay after saving pictures in ms\n" \
             " [-i | --input ].........: read frames from the specified input plugin\n" \
             " The following arguments are takes effect only if the current mode is not MJPG\n" \
@@ -81,7 +87,7 @@ void help(void)
 }
 
 /******************************************************************************
-Description.: clean up allocated ressources
+Description.: clean up allocated resources
 Input Value.: unused argument
 Return Value: -
 ******************************************************************************/
@@ -90,12 +96,12 @@ void worker_cleanup(void *arg)
     static unsigned char first_run = 1;
 
     if(!first_run) {
-        DBG("already cleaned up ressources\n");
+        DBG("already cleaned up resources\n");
         return;
     }
 
     first_run = 0;
-    OPRINT("cleaning up ressources allocated by worker thread\n");
+    OPRINT("cleaning up resources allocated by worker thread\n");
 
     if (fd >= 0)
     {
@@ -103,9 +109,9 @@ void worker_cleanup(void *arg)
         fd = -1;
     }
 
-
     if(frame != NULL) {
         free(frame);
+        frame = NULL;
     }
 }
 
@@ -151,7 +157,7 @@ int check_for_filename(const struct dirent *entry)
 
 /******************************************************************************
 Description.: delete oldest files, just keep "size" most recent files
-              This funtion MAY delete the wrong files if the time is not valid
+              This function MAY delete the wrong files if the time is not valid
 Input Value.: how many files to keep
 Return Value: -
 ******************************************************************************/
@@ -196,8 +202,44 @@ void maintain_ringbuffer(int size)
         free(namelist[i]);
     }
 
-    /* free last just allocated ressources */
+    /* free last just allocated resources */
     free(namelist);
+}
+
+static time_t add_time(struct tm const * const tm, size_t seconds)
+{
+    struct tm new_tm = *tm;
+    new_tm.tm_sec += seconds;
+
+    return mktime(&new_tm);
+}
+
+static int open_mjpeg_segment_file(void)
+{
+    time_t const t = time(NULL);
+    struct tm now = *localtime(&t);
+    int new_fd;
+
+    reopen_time = add_time(&now, segment_length_seconds);
+
+    /* prepare string, add time and date values */
+    if (strftime(buffer1, sizeof buffer1, "%Y_%m_%d_%H_%M_%S", &now) == 0)
+    {
+        OPRINT("strftime returned 0\n");
+        return -1;
+    }
+
+    /* finish filename by adding the foldername and a counter value */
+    snprintf(buffer2, sizeof buffer2, "%s/%s_movie.mpg", folder, buffer1);
+
+    OPRINT("output file.......: %s\n", buffer2);
+    new_fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (new_fd < 0)
+    {
+        OPRINT("could not open the file %s\n", buffer2);
+    }
+
+    return new_fd;
 }
 
 /******************************************************************************
@@ -209,11 +251,10 @@ Return Value:
 void *worker_thread(void *arg)
 {
     int ok = 1, frame_size = 0, rc = 0;
-    char buffer1[1024] = {0}, buffer2[1024] = {0};
     unsigned long long counter = 0;
     unsigned char *tmp_framebuffer = NULL;
 
-    /* set cleanup handler to cleanup allocated ressources */
+    /* set cleanup handler to cleanup allocated resources */
     pthread_cleanup_push(worker_cleanup, NULL);
 
     while(ok >= 0 && !pglobal->stop) {
@@ -310,7 +351,7 @@ void *worker_thread(void *arg)
 
             /*
              * maintain ringbuffer
-             * do not maintain ringbuffer for each picture, this saves ressources since
+             * do not maintain ringbuffer for each picture, this saves resources since
              * each run of the maintainance function involves sorting/malloc/free operations
              */
             if(ringbuffer_exceed <= 0) {
@@ -330,37 +371,20 @@ void *worker_thread(void *arg)
                 return NULL;
             }
 
-            time_t t = time(NULL);
-            if (difftime(t, reopen_time) >= 0)
+            if (segment_length_seconds > 0)
             {
-                struct tm now = *localtime(&t);
-                struct tm reopen_tm = now;
+                time_t t = time(NULL);
 
-                reopen_tm.tm_sec += 15;
-                reopen_time = mktime(&reopen_tm);      // normalize it
-
-                /* prepare string, add time and date values */
-                if (strftime(buffer1, sizeof(buffer1), "%Y_%m_%d_%H_%M_%S", &now) == 0)
+                if (difftime(t, reopen_time) >= 0)
                 {
-                    OPRINT("strftime returned 0\n");
                     close(fd);
-                    fd = -1;
-                    return NULL;
-                }
-
-                /* finish filename by adding the foldername and a counter value */
-                snprintf(buffer2, sizeof buffer2, "%s/%s_movie.mpg", folder, buffer1);
-
-                OPRINT("output file.......: %s\n", buffer2);
-                close(fd);
-                if ((fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
-                {
-                    OPRINT("could not open the file %s\n", buffer2);
-                    return NULL;
+                    fd = open_mjpeg_segment_file();
+                    if (fd < 0)
+                    {
+                        return NULL;
+                    }
                 }
             }
-
-
         }
 
         /* if specified, wait now */
@@ -417,7 +441,9 @@ int output_init(output_parameter *param, int id)
             {"input", required_argument, 0, 0},
             {"m", required_argument, 0, 0},
             {"mjpeg", required_argument, 0, 0},
-            {0, 0, 0, 0}
+            { "t", required_argument, 0, 0 },
+            { "time", required_argument, 0, 0 },
+            { 0, 0, 0, 0 }
         };
 
         c = getopt_long_only(param->argc, param->argv, "", long_options, &option_index);
@@ -482,6 +508,11 @@ int output_init(output_parameter *param, int id)
             DBG("case 12,13\n");
             mjpgFileName = strdup(optarg);
             break;
+        case 14:
+        case 15:
+            DBG("case 14,15\n");
+            segment_length_seconds = atoi(optarg); 
+            break;
         }
     }
 
@@ -500,31 +531,21 @@ int output_init(output_parameter *param, int id)
             OPRINT("ringbuffer size...: %s\n", "no ringbuffer");
         }
     } else {
-        char buffer1[1024];
-        char buffer2[1024];
-        time_t t;
+        OPRINT("segment length....: %zd\n", segment_length_seconds); 
 
-        /* get current time */
-        t = time(NULL);
-        struct tm now = *localtime(&t);
-        struct tm reopen_tm = now;
-
-        reopen_tm.tm_sec += 15;
-        reopen_time = mktime(&reopen_tm);      // normalize it
-
-
-        /* prepare string, add time and date values */
-        if (strftime(buffer1, sizeof(buffer1), "%Y_%m_%d_%H_%M_%S", &now) == 0)
+        if (segment_length_seconds == 0)
         {
-            OPRINT("strftime returned 0\n");
-            return 1;
+            sprintf(buffer2, "%s/%s", folder, mjpgFileName);
+
+            OPRINT("output file.......: %s\n", buffer2);
+            fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        }
+        else
+        {
+            fd = open_mjpeg_segment_file();
         }
 
-        /* finish filename by adding the foldername and a counter value */
-        snprintf(buffer2, sizeof buffer2, "%s/%s_movie.mpg", folder, buffer1); 
-
-        OPRINT("output file.......: %s\n", buffer2);
-        if ((fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
+        if (fd < 0)
         {
             OPRINT("could not open the file %s\n", buffer2);
             return 1;
