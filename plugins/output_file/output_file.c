@@ -57,7 +57,7 @@ static char *command = NULL;
 static int input_number = 0;
 static char *mjpgFileName = NULL;
 time_t reopen_time; /* The time when the current mjpeg file should be closed and another opened. */
-size_t segment_length_seconds = 0;
+size_t segment_length_minutes = 0;
 
 static char buffer1[1024];
 static char buffer2[1024]; 
@@ -75,8 +75,8 @@ void help(void)
             " ---------------------------------------------------------------\n" \
             " The following parameters can be passed to this plugin:\n\n" \
             " [-f | --folder ]........: folder to save pictures\n" \
-            " [-m | --mjpeg ].........: save the frames to an mjpg file \n" \
-            " [-t | --time ].........: mjpeg file length \n" \
+            " [-m | --mjpeg ].........: save the frames to an mjpg file\n" \
+            " [-t | --time ].........: mjpeg file length (minutes)\n" \
             " [-d | --delay ].........: delay after saving pictures in ms\n" \
             " [-i | --input ].........: read frames from the specified input plugin\n" \
             " The following arguments are takes effect only if the current mode is not MJPG\n" \
@@ -206,10 +206,10 @@ void maintain_ringbuffer(int size)
     free(namelist);
 }
 
-static time_t add_time(struct tm const * const tm, size_t seconds)
+static time_t add_time(struct tm const * const tm, size_t minutes)
 {
     struct tm new_tm = *tm;
-    new_tm.tm_sec += seconds;
+    new_tm.tm_min += minutes;
 
     return mktime(&new_tm);
 }
@@ -220,7 +220,7 @@ static int open_mjpeg_segment_file(void)
     struct tm now = *localtime(&t);
     int new_fd;
 
-    reopen_time = add_time(&now, segment_length_seconds);
+    reopen_time = add_time(&now, segment_length_minutes);
 
     /* prepare string, add time and date values */
     if (strftime(buffer1, sizeof buffer1, "%Y_%m_%d_%H_%M_%S", &now) == 0)
@@ -371,7 +371,7 @@ void *worker_thread(void *arg)
                 return NULL;
             }
 
-            if (segment_length_seconds > 0)
+            if (segment_length_minutes > 0)
             {
                 time_t t = time(NULL);
 
@@ -511,7 +511,7 @@ int output_init(output_parameter *param, int id)
         case 14:
         case 15:
             DBG("case 14,15\n");
-            segment_length_seconds = atoi(optarg); 
+            segment_length_minutes = atoi(optarg);
             break;
         }
     }
@@ -531,9 +531,9 @@ int output_init(output_parameter *param, int id)
             OPRINT("ringbuffer size...: %s\n", "no ringbuffer");
         }
     } else {
-        OPRINT("segment length....: %zd\n", segment_length_seconds); 
+        OPRINT("segment length (min)...: %zd\n", segment_length_minutes);
 
-        if (segment_length_seconds == 0)
+        if (segment_length_minutes == 0)
         {
             sprintf(buffer2, "%s/%s", folder, mjpgFileName);
 
