@@ -230,7 +230,7 @@ static int open_mjpeg_segment_file(void)
     }
 
     /* finish filename by adding the foldername and a counter value */
-    snprintf(buffer2, sizeof buffer2, "%s/%s_movie.mpg", folder, buffer1);
+    snprintf(buffer2, sizeof buffer2, "%s/%s-%s.mpg", folder, mjpgFileName, buffer1);
 
     OPRINT("output file.......: %s\n", buffer2);
     new_fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
