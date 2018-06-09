@@ -415,8 +415,8 @@ int output_init(output_parameter *param, int id)
 	int i;
     delay = 0;
     pglobal = param->global;
-    pglobal->out[id].name = malloc((1+strlen(OUTPUT_PLUGIN_NAME))*sizeof(char));
-    sprintf(pglobal->out[id].name, "%s", OUTPUT_PLUGIN_NAME);
+    pglobal->out[id].name = strdup(OUTPUT_PLUGIN_NAME);
+
     DBG("OUT plugin %d name: %s\n", id, pglobal->out[id].name);
 
     param->argv[0] = OUTPUT_PLUGIN_NAME;

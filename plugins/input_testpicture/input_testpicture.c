@@ -95,8 +95,7 @@ int input_init(input_parameter *param, int id)
     }
 
     param->argv[0] = INPUT_PLUGIN_NAME;
-    param->global->in[id].name = malloc((strlen(INPUT_PLUGIN_NAME) + 1) * sizeof(char));
-    sprintf(param->global->in[id].name, INPUT_PLUGIN_NAME);
+    param->global->in[id].name = strdup(INPUT_PLUGIN_NAME);
 
     /* show all parameters for DBG purposes */
     for(i = 0; i < param->argc; i++) {

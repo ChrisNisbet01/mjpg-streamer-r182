@@ -88,7 +88,8 @@ static void mjpeg_streamer_cleanup(void)
     int i, j, skip;
 
     /* signal "stop" to threads */
-    LOG("setting signal to stop\n");
+    LOG("signalling workers to stop\n");
+
     global.stop = 1;
 
     /* This needs a big cleanup/fixup. There is way too much work 
@@ -107,22 +108,18 @@ static void mjpeg_streamer_cleanup(void)
     for (i = 0; i < global.outcnt; i++)
     {
         global.out[i].stop(global.out[i].param.id);
-        LOG("stopped output %d\n", i);
+        DBG("stopped output %d\n", i);
     }
-
-    usleep(1000 * 1000);
 
     for (i = 0; i < global.incnt; i++)
     {
         global.in[i].stop(i);
-        LOG("stopped input %d\n", i);
+        DBG("stopped input %d\n", i);
 
         pthread_cond_destroy(&global.in[i].db_update);
         pthread_mutex_destroy(&global.in[i].db);
-        LOG("destroyed synchronisation data for input %d\n", i);
+        DBG("destroyed synchronisation data for input %d\n", i);
     }
-
-    usleep(1000 * 1000);
 
     LOG("closing plugins\n"); 
 
@@ -160,8 +157,31 @@ static void mjpeg_streamer_cleanup(void)
 
     LOG("done\n");
 
-    closelog();
-    exit(0);
+}
+
+static void wait_for_signal_to_stop(void)
+{
+    char temp;
+
+    while (read(signal_pipe[0], &temp, 1) == -1 && errno == EAGAIN)
+    {
+        /* Do nothing. */
+    }
+
+    LOG("Got signal to stop.\n");
+}
+
+static void signal_main_thread_to_stop(void)
+{
+    int savedErrno; /* In case 'errno' is changed inside this handler. */
+
+    savedErrno = errno;
+    while (write(signal_pipe[1], "x", 1) == -1 && errno == EAGAIN)
+    {
+        /* Do nothing. */
+    }
+
+    errno = savedErrno;
 }
 
 /******************************************************************************
@@ -174,16 +194,7 @@ Return Value: -
 ******************************************************************************/
 void signal_handler(int sig)
 {
-    int savedErrno; /* In case 'errno' is changed inside this handler. */
-
-    savedErrno = errno;
-    while (write(signal_pipe[1], "x", 1) == -1 && errno == EAGAIN)
-    {
-        /* Do nothing. */
-    }
-
-    errno = savedErrno;
-   
+    signal_main_thread_to_stop();
 }
 
 int split_parameters(char *parameter_string, int *argc, char **argv)
@@ -478,18 +489,12 @@ int main(int argc, char *argv[])
         global.out[i].run(global.out[i].param.id);
     }
 
-    char temp;
-    while (read(signal_pipe[0], &temp, 1) < 0 && errno == EAGAIN)
-    {
-        /* Do nothing. */
-    }
-
-    LOG("Got signal to stop.\n"); 
+    wait_for_signal_to_stop();
 
     mjpeg_streamer_cleanup();
 
-    /* wait for signals */
-    //pause();
+    closelog(); 
+
 
     return 0;
 }

@@ -91,8 +91,7 @@ int init_videoIn(struct vdIn *vd, char *device, int width,
     in_struct.index = 0;
     if (xioctl(vd->fd, VIDIOC_ENUMINPUT,  &in_struct) == 0) {
         int nameLength = strlen((char*)&in_struct.name);
-        pglobal->in[id].name = malloc((1+nameLength)*sizeof(char));
-        sprintf(pglobal->in[id].name, "%s", in_struct.name);
+        pglobal->in[id].name = strdup(in_struct.name);
         DBG("Input name: %s\n", in_struct.name);
     } else {
         DBG("VIDIOC_ENUMINPUT failed\n");

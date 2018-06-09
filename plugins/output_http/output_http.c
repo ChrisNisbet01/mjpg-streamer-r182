@@ -91,8 +91,7 @@ int output_init(output_parameter *param, int id)
     nocommands = 0;
 
     param->argv[0] = OUTPUT_PLUGIN_NAME;
-    param->global->out[id].name = malloc((strlen(OUTPUT_PLUGIN_NAME) + 1) * sizeof(char));
-    sprintf(param->global->out[id].name, OUTPUT_PLUGIN_NAME);
+    param->global->out[id].name = strdup(OUTPUT_PLUGIN_NAME);
 
     /* show all parameters for DBG purposes */
     for(i = 0; i < param->argc; i++) {
@@ -195,8 +194,8 @@ Return Value: always 0
 ******************************************************************************/
 int output_stop(int id)
 {
-
     DBG("will cancel server thread #%02d\n", id);
+
     pthread_cancel(servers[id].threadID);
     pthread_join(servers[id].threadID, NULL);
 
@@ -213,7 +212,7 @@ int output_run(int id)
     DBG("launching server thread #%02d\n", id);
 
     /* create thread and pass context to thread function */
-    pthread_create(&(servers[id].threadID), NULL, server_thread, &(servers[id]));
+    pthread_create(&servers[id].threadID, NULL, server_thread, &servers[id]);
 
     return 0;
 }
