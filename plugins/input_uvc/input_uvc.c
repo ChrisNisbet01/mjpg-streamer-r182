@@ -568,6 +568,7 @@ void *cam_thread(void *arg)
 
         /* signal fresh_frame */
         pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);
+
         pthread_mutex_unlock(&pglobal->in[pcontext->id].db);
     }
 
@@ -588,12 +589,12 @@ void cam_cleanup(void *arg)
     context *pcontext = arg;
     pglobal = pcontext->pglobal;
     if(!first_run) {
-        DBG("already cleaned up ressources\n");
+        DBG("already cleaned up resources\n");
         return;
     }
 
     first_run = 0;
-    IPRINT("cleaning up ressources allocated by input thread\n");
+    IPRINT("cleaning up resources allocated by input thread\n");
 
     close_v4l2(pcontext->videoIn);
     if(pcontext->videoIn->tmpbuffer != NULL) free(pcontext->videoIn->tmpbuffer);

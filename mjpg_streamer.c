@@ -97,29 +97,36 @@ void signal_handler(int sig)
     /* signal "stop" to threads */
     LOG("setting signal to stop\n");
     global.stop = 1;
-    usleep(1000 * 1000);
+
+    /* This needs s big cleanup/fixup. There is way too much work 
+     * going on in this signal handler that shouldn't be going on. 
+     * This function should notify the various threads that they 
+     * need to cleanup/quit, and get out pronto. 
+     */
 
     /* clean up threads */
     LOG("force cancellation of threads and cleanup resources\n");
-    for(i = 0; i < global.incnt; i++) {
-        global.in[i].stop(i);
-        /*for (j = 0; j<MAX_PLUGIN_ARGUMENTS; j++) {
-            if (global.in[i].param.argv[j] != NULL) {
-                free(global.in[i].param.argv[j]);
-            }
-        }*/
-    }
 
+    /* Stop the outputs before stopping the inputs so that the 
+     * mutexes and condition variables owned by the input threads 
+     * can be safely destroyed when stopping the inputs. 
+     */
     for(i = 0; i < global.outcnt; i++) {
         global.out[i].stop(global.out[i].param.id);
+    }
+
+    /* This is a signal handler people. Shouldn't be calling usleep() inside a signal handler. 
+     */
+    usleep(1000 * 1000);
+
+    for (i = 0; i < global.incnt; i++) {
+        global.in[i].stop(i);
         pthread_cond_destroy(&global.in[i].db_update);
         pthread_mutex_destroy(&global.in[i].db);
-        /*for (j = 0; j<MAX_PLUGIN_ARGUMENTS; j++) {
-            if (global.out[i].param.argv[j] != NULL)
-                free(global.out[i].param.argv[j]);
-        }*/
     }
-    usleep(1000 * 1000);
+
+    usleep(1000 * 1000); 
+
 
     /* close handles of input plugins */
     for(i = 0; i < global.incnt; i++) {

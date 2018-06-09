@@ -46,6 +46,8 @@
 #include "../../utils.h"
 #include "../../mjpg_streamer.h"
 
+#include <stdbool.h>
+
 #define OUTPUT_PLUGIN_NAME "FILE output plugin"
 
 static pthread_t worker;
@@ -58,6 +60,7 @@ static int input_number = 0;
 static char *mjpgFileName = NULL;
 time_t reopen_time; /* The time when the current mjpeg file should be closed and another opened. */
 size_t segment_length_minutes = 0;
+static bool have_input_mutex;
 
 static char buffer1[1024];
 static char buffer2[1024]; 
@@ -91,17 +94,15 @@ Description.: clean up allocated resources
 Input Value.: unused argument
 Return Value: -
 ******************************************************************************/
-void worker_cleanup(void *arg)
+static void worker_cleanup(void *arg)
 {
-    static unsigned char first_run = 1;
-
-    if(!first_run) {
-        DBG("already cleaned up resources\n");
-        return;
-    }
-
-    first_run = 0;
     OPRINT("cleaning up resources allocated by worker thread\n");
+
+    if (have_input_mutex)
+    {
+        pthread_mutex_unlock(&pglobal->in[input_number].db); 
+        have_input_mutex = false;
+    }
 
     if (fd >= 0)
     {
@@ -109,7 +110,8 @@ void worker_cleanup(void *arg)
         fd = -1;
     }
 
-    if(frame != NULL) {
+    if(frame != NULL) 
+    {
         free(frame);
         frame = NULL;
     }
@@ -248,7 +250,7 @@ Description.: this is the main worker thread
 Input Value.:
 Return Value:
 ******************************************************************************/
-void *worker_thread(void *arg)
+void * worker_thread(void  *arg)
 {
     int ok = 1, frame_size = 0, rc = 0;
     unsigned long long counter = 0;
@@ -261,6 +263,8 @@ void *worker_thread(void *arg)
         DBG("waiting for fresh frame\n");
 
         pthread_mutex_lock(&pglobal->in[input_number].db);
+        have_input_mutex = true;
+
         pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
 
         /* read buffer */
@@ -274,7 +278,8 @@ void *worker_thread(void *arg)
             if((tmp_framebuffer = realloc(frame, max_frame_size)) == NULL) {
                 pthread_mutex_unlock(&pglobal->in[input_number].db);
                 LOG("not enough memory\n");
-                return NULL;
+                /* Note that if realloc fails, frame is left untouched and must still be freed. */
+                goto done;
             }
 
             frame = tmp_framebuffer;
@@ -285,6 +290,8 @@ void *worker_thread(void *arg)
 
         /* allow others to access the global buffer again */
         pthread_mutex_unlock(&pglobal->in[input_number].db);
+        have_input_mutex = true; 
+
 
         if (mjpgFileName == NULL) { // single files with ringbuffer mode
             time_t t;
@@ -297,14 +304,13 @@ void *worker_thread(void *arg)
             now = localtime(&t);
             if(now == NULL) {
                 perror("localtime");
-                return NULL;
+                goto done;
             }
 
             /* prepare string, add time and date values */
             if(strftime(buffer1, sizeof buffer1, "%Y_%m_%d_%H_%M_%S", now) == 0) {
                 OPRINT("strftime returned 0\n");
-                free(frame); frame = NULL;
-                return NULL;
+                goto done;
             }
 
             /* finish filename by adding the foldername and a counter value */
@@ -317,16 +323,14 @@ void *worker_thread(void *arg)
             /* open file for write */
             if((fd = open(buffer2, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0) {
                 OPRINT("could not open the file %s\n", buffer2);
-                return NULL;
+                goto done;
             }
 
             /* save picture to file */
             if(write(fd, frame, frame_size) < 0) {
                 OPRINT("could not write to file %s\n", buffer2);
                 perror("write()");
-                close(fd);
-                fd = -1;
-                return NULL;
+                goto done;
             }
 
             close(fd);
@@ -343,7 +347,8 @@ void *worker_thread(void *arg)
                     LOG("setenv failed (return value %d)\n", rc);
                 }
 
-                /* execute the command now */
+                /* execute the command now. */
+                /* XXX - Security issue calling system() with tainted command string. */
                 if((rc = system(buffer1)) != 0) {
                     LOG("command failed (return value %d)\n", rc);
                 }
@@ -366,9 +371,7 @@ void *worker_thread(void *arg)
             if(write(fd, frame, frame_size) < 0) {
                 OPRINT("could not write to file %s\n", buffer2);
                 perror("write()");
-                close(fd);
-                fd = -1;
-                return NULL;
+                goto done;
             }
 
             if (segment_length_minutes > 0)
@@ -381,7 +384,7 @@ void *worker_thread(void *arg)
                     fd = open_mjpeg_segment_file();
                     if (fd < 0)
                     {
-                        return NULL;
+                        goto done;
                     }
                 }
             }
@@ -393,10 +396,11 @@ void *worker_thread(void *arg)
         }
     }
 
+done:
     /* cleanup now */
     pthread_cleanup_pop(1);
 
-    return NULL;
+    pthread_exit((void *)0);
 }
 
 /*** plugin interface functions ***/
@@ -600,7 +604,9 @@ Return Value: always 0
 int output_stop(int id)
 {
     DBG("will cancel worker thread\n");
+
     pthread_cancel(worker);
+
     return 0;
 }
 
@@ -613,6 +619,12 @@ int output_run(int id)
 {
     DBG("launching worker thread\n");
     pthread_create(&worker, 0, worker_thread, NULL);
+
+    /* XXX - It would be better for main to join on all the 
+     * threads rather than calling pause() as it does now, so 
+     * pthread_detach() whouldn't be getting called here (or by any 
+     * of the plugins. 
+     */
     pthread_detach(worker);
     return 0;
 }
