@@ -249,7 +249,10 @@ Return Value: always 0
 int output_stop(int id)
 {
     DBG("will cancel worker thread\n");
+
     pthread_cancel(worker);
+    pthread_join(worker, NULL);
+
     return 0;
 }
 
@@ -262,6 +265,6 @@ int output_run(int id)
 {
     DBG("launching worker thread\n");
     pthread_create(&worker, 0, worker_thread, NULL);
-    pthread_detach(worker);
+
     return 0;
 }

@@ -606,6 +606,7 @@ int output_stop(int id)
     DBG("will cancel worker thread\n");
 
     pthread_cancel(worker);
+    pthread_join(worker, NULL);
 
     return 0;
 }
@@ -618,14 +619,9 @@ Return Value: always 0
 int output_run(int id)
 {
     DBG("launching worker thread\n");
+
     pthread_create(&worker, 0, worker_thread, NULL);
 
-    /* XXX - It would be better for main to join on all the 
-     * threads rather than calling pause() as it does now, so 
-     * pthread_detach() whouldn't be getting called here (or by any 
-     * of the plugins. 
-     */
-    pthread_detach(worker);
     return 0;
 }
 

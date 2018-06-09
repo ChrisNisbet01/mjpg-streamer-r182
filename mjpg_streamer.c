@@ -44,6 +44,7 @@
 
 /* globals */
 static globals global;
+static int signal_pipe[2];
 
 /******************************************************************************
 Description.: Display a help message
@@ -82,15 +83,7 @@ void help(char *progname)
     fprintf(stderr, "-----------------------------------------------------------------------\n");
 }
 
-/******************************************************************************
-Description.: pressing CTRL+C sends signals to this process instead of just
-              killing it plugins can tidily shutdown and free allocated
-              resources. The function prototype is defined by the system,
-              because it is a callback function.
-Input Value.: sig tells us which signal was received
-Return Value: -
-******************************************************************************/
-void signal_handler(int sig)
+static void mjpeg_streamer_cleanup(void)
 {
     int i, j, skip;
 
@@ -98,7 +91,7 @@ void signal_handler(int sig)
     LOG("setting signal to stop\n");
     global.stop = 1;
 
-    /* This needs s big cleanup/fixup. There is way too much work 
+    /* This needs a big cleanup/fixup. There is way too much work 
      * going on in this signal handler that shouldn't be going on. 
      * This function should notify the various threads that they 
      * need to cleanup/quit, and get out pronto. 
@@ -111,41 +104,52 @@ void signal_handler(int sig)
      * mutexes and condition variables owned by the input threads 
      * can be safely destroyed when stopping the inputs. 
      */
-    for(i = 0; i < global.outcnt; i++) {
+    for (i = 0; i < global.outcnt; i++)
+    {
         global.out[i].stop(global.out[i].param.id);
+        LOG("stopped output %d\n", i);
     }
 
-    /* This is a signal handler people. Shouldn't be calling usleep() inside a signal handler. 
-     */
     usleep(1000 * 1000);
 
-    for (i = 0; i < global.incnt; i++) {
+    for (i = 0; i < global.incnt; i++)
+    {
         global.in[i].stop(i);
+        LOG("stopped input %d\n", i);
+
         pthread_cond_destroy(&global.in[i].db_update);
         pthread_mutex_destroy(&global.in[i].db);
+        LOG("destroyed synchronisation data for input %d\n", i);
     }
 
-    usleep(1000 * 1000); 
+    usleep(1000 * 1000);
+
+    LOG("closing plugins\n"); 
 
 
     /* close handles of input plugins */
-    for(i = 0; i < global.incnt; i++) {
+    for (i = 0; i < global.incnt; i++)
+    {
         dlclose(global.in[i].handle);
     }
 
-    for(i = 0; i < global.outcnt; i++) {
+    for (i = 0; i < global.outcnt; i++)
+    {
         skip = 0;
-        DBG("about to decrement usage counter for handle of %s, id #%02d, handle: %p\n", \
-            global.out[i].plugin, global.out[i].param.id, global.out[i].handle);
+        DBG("about to decrement usage counter for handle of %s, id #%02d, handle: %p\n",\
+                global.out[i].plugin, global.out[i].param.id, global.out[i].handle);
 
-        for(j=i+1; j<global.outcnt; j++) {
-          if ( global.out[i].handle == global.out[j].handle ) {
-            DBG("handles are pointing to the same destination (%p == %p)\n", global.out[i].handle, global.out[j].handle);
-            skip = 1;
-          }
+        for (j = i + 1; j < global.outcnt; j++)
+        {
+            if (global.out[i].handle == global.out[j].handle)
+            {
+                DBG("handles are pointing to the same destination (%p == %p)\n", global.out[i].handle, global.out[j].handle);
+                skip = 1;
+            }
         }
-        if ( skip ) {
-          continue;
+        if (skip)
+        {
+            continue;
         }
 
         DBG("closing handle %p\n", global.out[i].handle);
@@ -158,7 +162,28 @@ void signal_handler(int sig)
 
     closelog();
     exit(0);
-    return;
+}
+
+/******************************************************************************
+Description.: pressing CTRL+C sends signals to this process instead of just
+              killing it plugins can tidily shutdown and free allocated
+              resources. The function prototype is defined by the system,
+              because it is a callback function.
+Input Value.: sig tells us which signal was received
+Return Value: -
+******************************************************************************/
+void signal_handler(int sig)
+{
+    int savedErrno; /* In case 'errno' is changed inside this handler. */
+
+    savedErrno = errno;
+    while (write(signal_pipe[1], "x", 1) == -1 && errno == EAGAIN)
+    {
+        /* Do nothing. */
+    }
+
+    errno = savedErrno;
+   
 }
 
 int split_parameters(char *parameter_string, int *argc, char **argv)
@@ -289,6 +314,13 @@ int main(int argc, char *argv[])
     if(daemon) {
         LOG("enabling daemon mode");
         daemon_mode();
+    }
+
+    if (pipe(signal_pipe) < 0)
+    {
+        LOG("could not open signal pipe\n");
+        closelog();
+        exit(EXIT_FAILURE);
     }
 
     /* ignore SIGPIPE (send by OS if transmitting to closed TCP sockets) */
@@ -446,8 +478,18 @@ int main(int argc, char *argv[])
         global.out[i].run(global.out[i].param.id);
     }
 
+    char temp;
+    while (read(signal_pipe[0], &temp, 1) < 0 && errno == EAGAIN)
+    {
+        /* Do nothing. */
+    }
+
+    LOG("Got signal to stop.\n"); 
+
+    mjpeg_streamer_cleanup();
+
     /* wait for signals */
-    pause();
+    //pause();
 
     return 0;
 }

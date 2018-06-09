@@ -202,7 +202,9 @@ Return Value: always 0
 int input_stop(void)
 {
     DBG("will cancel input thread\n");
+
     pthread_cancel(cam);
+    pthread_join(worker, NULL); 
 
     return 0;
 }
@@ -216,7 +218,7 @@ int input_run(void)
 {
 
     pthread_create(&cam, 0, cam_thread, NULL);
-    pthread_detach(cam);
+
 
     return 0;
 }

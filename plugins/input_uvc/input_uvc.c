@@ -389,7 +389,10 @@ Return Value: always 0
 int input_stop(int id)
 {
     DBG("will cancel camera thread #%02d\n", id);
+
     pthread_cancel(cams[id].threadID);
+    pthread_join(cams[id].threadID, NULL);
+
     return 0;
 }
 
@@ -409,7 +412,7 @@ int input_run(int id)
     DBG("launching camera thread #%02d\n", id);
     /* create thread and pass context to thread function */
     pthread_create(&(cams[id].threadID), NULL, cam_thread, &(cams[id]));
-    pthread_detach(cams[id].threadID);
+
     return 0;
 }
 

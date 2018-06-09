@@ -198,6 +198,7 @@ int output_stop(int id)
 
     DBG("will cancel server thread #%02d\n", id);
     pthread_cancel(servers[id].threadID);
+    pthread_join(servers[id].threadID, NULL);
 
     return 0;
 }
@@ -213,7 +214,6 @@ int output_run(int id)
 
     /* create thread and pass context to thread function */
     pthread_create(&(servers[id].threadID), NULL, server_thread, &(servers[id]));
-    pthread_detach(servers[id].threadID);
 
     return 0;
 }

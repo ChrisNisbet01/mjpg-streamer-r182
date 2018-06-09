@@ -180,7 +180,10 @@ int input_init(input_parameter *param, int id)
 int input_stop(int id)
 {
     DBG("will cancel input thread\n");
+
     pthread_cancel(worker);
+    pthread_join(worker, NULL);
+
     return 0;
 }
 
@@ -214,8 +217,6 @@ int input_run(int id)
         fprintf(stderr, "could not start worker thread\n");
         exit(EXIT_FAILURE);
     }
-
-    pthread_detach(worker);
 
     return 0;
 }
