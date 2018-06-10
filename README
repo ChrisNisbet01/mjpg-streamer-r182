@@ -1,10 +1,30 @@
+This port of MJPG-streamer is taken from the version used with OpenWRT.
+I have made various fixes to the code because frankly, there was some pretty horrible stuff going on.
+e.g.
+All cleanup done within the SIGINT signal handler. This has now been moved into the main thread.
+The main thread joins all worker threads after cancelling them. The worker threads are no longer detached. 
+The condition mutexes owned by the input plugins are released if the thread is cancelled while the mutex is held.
+The output plugins are stopped before the input plugins. Previously, the output plugins were stopped, and the input conditions and mutexes
+were destroyed before the input plugins were stopped.
+
+These changes seem to have fixed the segfault issue that I was experiencing whenever the application was stopped.
+Note that there are still things to fix.
+memory leaks (e.g. plugin names are malloced, but never freed.
+It is not possible to have more that one output_file output.
+The input conditions should be checked to ensure there is new data to read.
+
+I have changed the output_file plugin so that it supports writing multiple output file segments of the specified time.
+
+
 "MJPG-streamer", is a command line application that copied JPG-frame from a single input plugin to multiple output plugins. It can be used to stream JPEG files over an IP-based network from the webcam to a viewer like Firefox, Cambozola, Videolanclient or even to a Windows Mobile device running the TCPMP-Player.
 
 It was written for embedded devices with very limited ressources in terms of RAM and CPU. Its origin, the "uvc_streamer" was written, because Linux-UVC compatible cameras directly produce JPEG-data, allowing fast and perfomant M-JPEG streams even from an embedded device running OpenWRT. The input module "input_uvc.so" captures such JPG frames from a connected webcam.
 
 This tool can be modified and distributed according to the terms of the GPL v2.
 
-Currently no issues are known, but since this software is quite young and not used widely it may cause problems. You must really know what you are doing, if you use this software. If you want to use the software you are obliged to check if the sourcecode does what you expect it to do and take the risk yourself to use it.
+Currently no issues are known, but since this software is quite young and not used widely it may cause problems. 
+You must really know what you are doing, if you use this software. 
+If you want to use the software you are obliged to check if the sourcecode does what you expect it to do and take the risk yourself to use it.
 
 To view the stream use VLC or Firefox and open the URL:
 http://127.0.0.1:8080/?action=stream
