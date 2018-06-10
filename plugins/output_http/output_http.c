@@ -91,7 +91,7 @@ int output_init(output_parameter *param, int id)
     nocommands = 0;
 
     param->argv[0] = OUTPUT_PLUGIN_NAME;
-    param->global->out[id].name = strdup(OUTPUT_PLUGIN_NAME);
+    param->global->out[id].name = OUTPUT_PLUGIN_NAME;
 
     /* show all parameters for DBG purposes */
     for(i = 0; i < param->argc; i++) {

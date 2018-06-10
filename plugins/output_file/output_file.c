@@ -415,7 +415,7 @@ int output_init(output_parameter *param, int id)
 	int i;
     delay = 0;
     pglobal = param->global;
-    pglobal->out[id].name = strdup(OUTPUT_PLUGIN_NAME);
+    pglobal->out[id].name = OUTPUT_PLUGIN_NAME;
 
     DBG("OUT plugin %d name: %s\n", id, pglobal->out[id].name);
 

@@ -171,7 +171,7 @@ int input_init(input_parameter *param, int id)
     IPRINT("delete file.......: %s\n", (rm) ? "yes, delete" : "no, do not delete");
     IPRINT("filename must be..: %s\n", (filename == NULL) ? "-no filter for certain filename set-" : filename);
 
-    param->global->in[id].name = strdup(INPUT_PLUGIN_NAME);
+    param->global->in[id].name = INPUT_PLUGIN_NAME;
 
     return 0;
 }
