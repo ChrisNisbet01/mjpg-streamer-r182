@@ -54,7 +54,7 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
     unsigned long written = size;
 
     line_buffer = calloc(vd->width * 3, 1);
-    yuyv = vd->framebuffer;
+    yuyv = vd->latest_framebuffer;
 
     cinfo.err = jpeg_std_error(&jerr);
     jpeg_create_compress(&cinfo);
@@ -128,7 +128,7 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
             jpeg_write_scanlines(&cinfo, row_pointer, 1);
         }
     } else if (vd->formatIn == V4L2_PIX_FMT_RGB24) {
-        jpeg_write_scanlines(&cinfo, (JSAMPROW*)vd->framebuffer, vd->height);
+        jpeg_write_scanlines(&cinfo, (JSAMPROW*)vd->latest_framebuffer, vd->height);
     }
 
     jpeg_finish_compress(&cinfo);

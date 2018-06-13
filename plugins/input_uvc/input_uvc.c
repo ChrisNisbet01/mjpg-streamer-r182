@@ -552,7 +552,7 @@ void *cam_thread(void *arg)
         } else {
         #endif
             //DBG("copying frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);
+            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->latest_framebuffer, pcontext->videoIn->tmpbytesused);
         #ifndef NO_LIBJPEG
         }
         #endif
@@ -599,7 +599,10 @@ void cam_cleanup(void *arg)
     IPRINT("cleaning up resources allocated by input thread\n");
 
     close_v4l2(pcontext->videoIn);
-    if(pcontext->videoIn->tmpbuffer != NULL) free(pcontext->videoIn->tmpbuffer);
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
+    if (pcontext->videoIn->tmpbuffer != NULL)
+        free(pcontext->videoIn->tmpbuffer);
+#endif
     if(pcontext->videoIn != NULL) free(pcontext->videoIn);
     if(pglobal->in[pcontext->id].buf != NULL)
         free(pglobal->in[pcontext->id].buf);

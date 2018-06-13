@@ -72,6 +72,8 @@ enum _streaming_state {
     STREAMING_ON = 1,
     STREAMING_PAUSED = 2,
 };
+#define USE_MEMCPY_TO_FRAMEBUFFER
+
 
 struct vdIn {
     int fd;
@@ -83,10 +85,17 @@ struct vdIn {
     struct v4l2_requestbuffers rb;
     void *mem[NB_BUFFER];
     int memlength[NB_BUFFER];
+    size_t spare_buf;
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
     unsigned char *tmpbuffer;
+#endif
     int tmpbytesused;
     struct timeval tmptimestamp;
-    unsigned char *framebuffer;
+
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
+    unsigned char * framebuffer;
+#endif
+    unsigned char * latest_framebuffer;
     streaming_state streamingState;
     int grabmethod;
     int width;

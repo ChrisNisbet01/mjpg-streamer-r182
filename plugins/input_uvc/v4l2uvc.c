@@ -29,7 +29,7 @@
 #include "huffman.h"
 #include "dynctrl.h"
 
-static int debug = 1;
+static int debug = 0;
 
 /* ioctl with a number of retries in the case of failure
 * args:
@@ -180,17 +180,21 @@ int init_videoIn(struct vdIn *vd, char *device, int width,
     vd->framesizeIn = (vd->width * vd->height << 1);
     switch(vd->formatIn) {
     case V4L2_PIX_FMT_MJPEG: // in JPG mode the frame size is varies at every frame, so we allocate a bit bigger buffer
-        vd->tmpbuffer = (unsigned char *) calloc(1, (size_t) vd->framesizeIn);
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
+            vd->tmpbuffer = (unsigned char *)calloc(1, (size_t)vd->framesizeIn);
         if(!vd->tmpbuffer)
             goto error;
         vd->framebuffer =
             (unsigned char *) calloc(1, (size_t) vd->width * (vd->height + 8) * 2);
+#endif
         break;
     case V4L2_PIX_FMT_RGB565: // buffer allocation for non varies on frame size formats
     case V4L2_PIX_FMT_YUYV:
     case V4L2_PIX_FMT_RGB24:
-        vd->framebuffer =
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
+            vd->framebuffer =
             (unsigned char *) calloc(1, (size_t) vd->framesizeIn);
+#endif
         break;
     default:
         fprintf(stderr, " should never arrive exit fatal !!\n");
@@ -199,8 +203,10 @@ int init_videoIn(struct vdIn *vd, char *device, int width,
 
     }
 
-    if(!vd->framebuffer)
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
+    if (!vd->framebuffer)
         goto error;
+#endif
     return 0;
 error:
     free(pglobal->in[id].in_parameters);
@@ -408,7 +414,7 @@ static int init_v4l2(struct vdIn *vd)
     /*
      * Queue the buffers.
      */
-    for(i = 0; i < NB_BUFFER; ++i) {
+    for(i = 0; i < NB_BUFFER - 1; ++i) {
         memset(&buf, 0, sizeof(struct v4l2_buffer));
         buf.index = i;
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -416,9 +422,12 @@ static int init_v4l2(struct vdIn *vd)
         ret = xioctl(vd->fd, VIDIOC_QBUF, &buf);
         if(ret < 0) {
             perror("Unable to queue buffer");
-            goto fatal;;
+            goto fatal;
         }
     }
+
+    vd->spare_buf = i;
+
     return 0;
 fatal:
     return -1;
@@ -538,9 +547,12 @@ int uvcGrab(struct vdIn *vd)
         memcpy (vd->tmpbuffer + HEADERFRAME1 + sizeof(dht_data), vd->mem[buf.index] + HEADERFRAME1, (buf.bytesused - HEADERFRAME1));
         */
 
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
         memcpy(vd->tmpbuffer, vd->mem[buf.index], buf.bytesused);
-	vd->tmpbytesused = buf.bytesused;
-	vd->tmptimestamp = buf.timestamp;
+#endif
+        vd->latest_framebuffer = vd->mem[buf.index];
+        vd->tmpbytesused = buf.bytesused;
+        vd->tmptimestamp = buf.timestamp;
 
         if(debug)
             fprintf(stderr, "bytes in used %d \n", buf.bytesused);
@@ -548,16 +560,23 @@ int uvcGrab(struct vdIn *vd)
     case V4L2_PIX_FMT_RGB565:
     case V4L2_PIX_FMT_YUYV:
     case V4L2_PIX_FMT_RGB24:
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
         if(buf.bytesused > vd->framesizeIn)
             memcpy(vd->framebuffer, vd->mem[buf.index], (size_t) vd->framesizeIn);
         else
             memcpy(vd->framebuffer, vd->mem[buf.index], (size_t) buf.bytesused);
+#endif
+        vd->latest_framebuffer = vd->mem[buf.index];
         break;
 
     default:
         goto err;
         break;
     }
+
+    size_t temp_index = buf.index;
+    buf.index = vd->spare_buf;
+    vd->spare_buf = temp_index;
 
     ret = xioctl(vd->fd, VIDIOC_QBUF, &buf);
     if(ret < 0) {
@@ -576,12 +595,16 @@ int close_v4l2(struct vdIn *vd)
 {
     if(vd->streamingState == STREAMING_ON)
         video_disable(vd, STREAMING_OFF);
-    if(vd->tmpbuffer)
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
+    if (vd->tmpbuffer)
         free(vd->tmpbuffer);
     vd->tmpbuffer = NULL;
+#endif
     vd->tmpbytesused = 0;
+#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
     free(vd->framebuffer);
     vd->framebuffer = NULL;
+#endif
     free(vd->videodevice);
     free(vd->status);
     free(vd->pictName);
