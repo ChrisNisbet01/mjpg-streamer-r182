@@ -29,7 +29,7 @@
 #include "huffman.h"
 #include "dynctrl.h"
 
-static int debug = 0;
+static int debug = 1;
 
 /* ioctl with a number of retries in the case of failure
 * args:
@@ -90,8 +90,7 @@ int init_videoIn(struct vdIn *vd, char *device, int width,
     memset(&in_struct, 0, sizeof(struct v4l2_input));
     in_struct.index = 0;
     if (xioctl(vd->fd, VIDIOC_ENUMINPUT,  &in_struct) == 0) {
-        int nameLength = strlen((char*)&in_struct.name);
-        pglobal->in[id].name = in_struct.name;
+        pglobal->in[id].name = (char *)in_struct.name;
         DBG("Input name: %s\n", in_struct.name);
     } else {
         DBG("VIDIOC_ENUMINPUT failed\n");
