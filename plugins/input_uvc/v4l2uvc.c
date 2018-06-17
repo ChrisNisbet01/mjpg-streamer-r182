@@ -550,7 +550,7 @@ int uvcGrab(struct vdIn *vd)
 #if defined(USE_MEMCPY_TO_FRAMEBUFFER)
         memcpy(vd->tmpbuffer, vd->mem[buf.index], buf.bytesused);
 #endif
-        vd->latest_framebuffer = vd->mem[buf.index];
+        vd->framebuffer = vd->mem[buf.index];
         vd->tmpbytesused = buf.bytesused;
         vd->tmptimestamp = buf.timestamp;
 
@@ -566,7 +566,7 @@ int uvcGrab(struct vdIn *vd)
         else
             memcpy(vd->framebuffer, vd->mem[buf.index], (size_t) buf.bytesused);
 #endif
-        vd->latest_framebuffer = vd->mem[buf.index];
+        vd->framebuffer = vd->mem[buf.index];
         break;
 
     default:

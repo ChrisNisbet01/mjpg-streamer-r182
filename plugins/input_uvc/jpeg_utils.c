@@ -49,12 +49,11 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
     struct jpeg_compress_struct cinfo;
     struct jpeg_error_mgr jerr;
     JSAMPROW row_pointer[1];
-    unsigned char *line_buffer, *yuyv;
+    unsigned char *line_buffer;
     int z;
     unsigned long written = size;
 
     line_buffer = calloc(vd->width * 3, 1);
-    yuyv = vd->latest_framebuffer;
 
     cinfo.err = jpeg_std_error(&jerr);
     jpeg_create_compress(&cinfo);
@@ -72,6 +71,8 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
 
     z = 0;
     if (vd->formatIn == V4L2_PIX_FMT_YUYV) {
+        unsigned char * yuyv = vd->framebuffer;
+
         while(cinfo.next_scanline < vd->height) {
             int x;
             unsigned char *ptr = line_buffer;
@@ -106,11 +107,15 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
             jpeg_write_scanlines(&cinfo, row_pointer, 1);
         }
     } else if (vd->formatIn == V4L2_PIX_FMT_RGB565) {
-        while(cinfo.next_scanline < vd->height) {
-            int x;
-            unsigned char *ptr = line_buffer;
+        unsigned char * yuyv = vd->framebuffer;
 
-            for(x = 0; x < vd->width; x++) {
+        while (cinfo.next_scanline < vd->height)
+        {
+            int x;
+            unsigned char * ptr = line_buffer;
+
+            for (x = 0; x < vd->width; x++)
+            {
                 /*
                 unsigned int tb = ((unsigned char)raw[i+1] << 8) + (unsigned char)raw[i];
                 r =  ((unsigned char)(raw[i+1]) & 248);
@@ -128,7 +133,7 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
             jpeg_write_scanlines(&cinfo, row_pointer, 1);
         }
     } else if (vd->formatIn == V4L2_PIX_FMT_RGB24) {
-        jpeg_write_scanlines(&cinfo, (JSAMPROW*)vd->latest_framebuffer, vd->height);
+        jpeg_write_scanlines(&cinfo, (JSAMPROW*)vd->framebuffer, vd->height);
     }
 
     jpeg_finish_compress(&cinfo);

@@ -552,7 +552,7 @@ void *cam_thread(void *arg)
         } else {
         #endif
             //DBG("copying frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->latest_framebuffer, pcontext->videoIn->tmpbytesused);
+            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->framebuffer, pcontext->videoIn->tmpbytesused);
         #ifndef NO_LIBJPEG
         }
         #endif

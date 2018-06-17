@@ -92,10 +92,7 @@ struct vdIn {
     int tmpbytesused;
     struct timeval tmptimestamp;
 
-#if defined(USE_MEMCPY_TO_FRAMEBUFFER)
     unsigned char * framebuffer;
-#endif
-    unsigned char * latest_framebuffer;
     streaming_state streamingState;
     int grabmethod;
     int width;
